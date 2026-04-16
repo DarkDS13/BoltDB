@@ -1,0 +1,26 @@
+[
+  {
+    "rows": 1000000,
+    "sqlite_ms": 172.538,
+    "numpy_ms": 1.409,
+    "gpu_mlx_ms": 27.094,
+    "gpu_speedup_vs_sqlite": 6.368,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 2000000,
+    "sqlite_ms": 355.805,
+    "numpy_ms": 2.826,
+    "gpu_mlx_ms": 48.486,
+    "gpu_speedup_vs_sqlite": 7.338,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 5000000,
+    "sqlite_ms": 887.898,
+    "numpy_ms": 7.404,
+    "gpu_mlx_ms": 115.354,
+    "gpu_speedup_vs_sqlite": 7.697,
+    "winner": "GPU \u2713"
+  }
+]
