@@ -17,57 +17,69 @@ erDiagram
     comments ||--o{ comments : replies_to
 
     users {
-      int user_id PK
-      text username UNIQUE
-      text email UNIQUE
-      text joined_at
-      int is_verified
+        INTEGER user_id PK
+        TEXT username UK "UNIQUE"
+        TEXT email UK "UNIQUE"
+        TEXT city
+        TEXT bio
+        TEXT joined_at
+        INTEGER is_verified "0 or 1"
     }
 
     posts {
-      int post_id PK
-      int user_id FK
-      text topic
-      text created_at
-      int like_count
-      int comment_count
-    }
-
-    likes {
-      int like_id PK
-      int user_id FK
-      int post_id FK
-      text created_at
-    }
-
-    comments {
-      int comment_id PK
-      int post_id FK
-      int user_id FK
-      int parent_comment_id FK
-      text created_at
-    }
-
-    follows {
-      int follower_user_id PK
-      int followee_user_id PK
-      text followed_at
+        INTEGER post_id PK
+        INTEGER user_id FK
+        TEXT content
+        TEXT media_type "text, image, video, link"
+        TEXT topic
+        TEXT source_device "web, ios, android"
+        TEXT created_at
+        INTEGER like_count
+        INTEGER comment_count
     }
 
     tags {
-      int tag_id PK
-      text tag_name UNIQUE
+        INTEGER tag_id PK
+        TEXT tag_name UK "UNIQUE"
     }
 
     post_tags {
-      int post_id PK
-      int tag_id PK
+        INTEGER post_id PK,FK
+        INTEGER tag_id PK,FK
+    }
+
+    follows {
+        INTEGER follower_user_id PK,FK
+        INTEGER followee_user_id PK,FK
+        TEXT source_device "web, ios, android"
+        TEXT followed_at
+    }
+
+    likes {
+        INTEGER like_id PK
+        INTEGER user_id FK
+        INTEGER post_id FK
+        TEXT source_device "web, ios, android"
+        TEXT created_at
+    }
+
+    comments {
+        INTEGER comment_id PK
+        INTEGER post_id FK
+        INTEGER user_id FK
+        INTEGER parent_comment_id FK
+        TEXT source_device "web, ios, android"
+        TEXT comment_text
+        TEXT created_at
     }
 
     user_activity {
-      int activity_id PK
-      int user_id FK
-      text activity_type
-      text activity_time
+        INTEGER activity_id PK
+        INTEGER user_id FK
+        TEXT activity_type "login, post, like, comment, follow"
+        TEXT entity_type
+        INTEGER entity_id
+        TEXT device_type "web, ios, android"
+        TEXT activity_time
     }
 ```
