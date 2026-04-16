@@ -1,0 +1,66 @@
+[
+  {
+    "rows": 10000,
+    "sqlite_ms": 1.768,
+    "numpy_ms": 0.013,
+    "gpu_mlx_ms": 2.28,
+    "gpu_speedup_vs_sqlite": 0.775,
+    "winner": "SQL \u2713"
+  },
+  {
+    "rows": 50000,
+    "sqlite_ms": 6.803,
+    "numpy_ms": 0.061,
+    "gpu_mlx_ms": 2.84,
+    "gpu_speedup_vs_sqlite": 2.395,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 100000,
+    "sqlite_ms": 13.464,
+    "numpy_ms": 0.115,
+    "gpu_mlx_ms": 4.648,
+    "gpu_speedup_vs_sqlite": 2.897,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 250000,
+    "sqlite_ms": 35.019,
+    "numpy_ms": 0.321,
+    "gpu_mlx_ms": 7.955,
+    "gpu_speedup_vs_sqlite": 4.402,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 500000,
+    "sqlite_ms": 82.464,
+    "numpy_ms": 0.655,
+    "gpu_mlx_ms": 13.994,
+    "gpu_speedup_vs_sqlite": 5.893,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 1000000,
+    "sqlite_ms": 173.276,
+    "numpy_ms": 1.388,
+    "gpu_mlx_ms": 23.893,
+    "gpu_speedup_vs_sqlite": 7.252,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 2000000,
+    "sqlite_ms": 346.557,
+    "numpy_ms": 2.634,
+    "gpu_mlx_ms": 46.691,
+    "gpu_speedup_vs_sqlite": 7.422,
+    "winner": "GPU \u2713"
+  },
+  {
+    "rows": 5000000,
+    "sqlite_ms": 876.105,
+    "numpy_ms": 7.353,
+    "gpu_mlx_ms": 114.2,
+    "gpu_speedup_vs_sqlite": 7.672,
+    "winner": "GPU \u2713"
+  }
+]

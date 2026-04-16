@@ -22,6 +22,7 @@ from query_runner import DEFAULT_DB_PATH, choose_default_post, choose_default_us
 # ── GPU backend detection ────────────────────────────────────────────────────
 try:
     import mlx.core as mx  # Apple Silicon Metal GPU
+    mx.set_default_device(mx.gpu)  # Explicitly force Metal GPU — no CPU fallback
     MLX_AVAILABLE = True
 except Exception:
     mx = None  # type: ignore
@@ -130,22 +131,23 @@ def load_like_user_ids(conn: sqlite3.Connection) -> np.ndarray:
 def mlx_bincount(arr: np.ndarray) -> tuple[int, float]:
     """Run a GPU-accelerated likes-per-user aggregation using Apple MLX (Metal).
 
-    We use one-hot encoding + sum as MLX currently has no native bincount.
+    All ops run inside mx.stream(mx.gpu) to explicitly force Metal GPU execution.
+    Uses one-hot encoding + sum since MLX has no native bincount.
     Returns (top_user_id, elapsed_ms).
     """
-    # Transfer to Metal GPU
-    device_arr = mx.array(arr)
     n_users = int(arr.max()) + 1
 
     t0 = time.perf_counter()
-    # One-hot encode then sum each column → per-user like counts
-    one_hot = mx.equal(
-        device_arr[:, None],                      # (N, 1)
-        mx.arange(n_users, dtype=mx.int32)[None, :]  # (1, U)
-    )
-    counts = mx.sum(one_hot, axis=0)              # (U,)
-    top_user = int(mx.argmax(counts).item())
-    mx.eval(counts)                               # flush Metal command buffer
+    with mx.stream(mx.gpu):  # Explicitly dispatch ALL ops to Metal GPU
+        device_arr = mx.array(arr)  # Transfer to GPU memory
+        # One-hot encode then sum each column → per-user like counts
+        one_hot = mx.equal(
+            device_arr[:, None],                         # (N, 1)
+            mx.arange(n_users, dtype=mx.int32)[None, :]  # (1, U)
+        )
+        counts = mx.sum(one_hot, axis=0)                 # (U,)
+        top_user = int(mx.argmax(counts).item())
+        mx.eval(counts)  # Flush Metal command buffer — blocks until GPU is done
     elapsed_ms = (time.perf_counter() - t0) * 1000
     return top_user, elapsed_ms
 
