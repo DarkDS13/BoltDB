@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BoltDB — GPU Analytics Dashboard</title>
+  <meta name="description" content="GPU-accelerated social media analytics DBMS dashboard."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+  /* ──────────────────── tokens ──────────────────── */
+  :root{
+    --bg0:#080b12;--bg1:#0e1221;--bg2:#131929;--bg3:#1a2236;
+    --border:rgba(80,110,220,.13);--border2:rgba(80,110,220,.28);
+    --text:#dde5f8;--text2:#7a8aaa;--text3:#4a5570;
+    --blue:#5b7cfa;--purple:#9b6ef5;--green:#2ecc9b;--amber:#f6c34f;--red:#f06d6d;
+    --glow:0 0 28px rgba(91,124,250,.2);
+    --r:12px;--rs:7px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg0);color:var(--text);display:flex}
+
+  /* ──────────────────── sidebar ──────────────────── */
+  aside{
+    width:220px;flex-shrink:0;
+    background:var(--bg1);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;height:100vh;overflow:hidden;
+  }
+  .logo{
+    padding:20px 18px 16px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;
+  }
+  .logo-icon{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(135deg,var(--blue),var(--purple));
+    display:flex;align-items:center;justify-content:center;font-size:17px;
+    box-shadow:0 0 16px rgba(91,124,250,.4);
+  }
+  .logo-text h1{font-size:16px;font-weight:700;letter-spacing:-.3px;color:#fff}
+  .logo-text p{font-size:10px;color:var(--text2);letter-spacing:.6px;text-transform:uppercase;margin-top:1px}
+
+  .gpu-pill{
+    margin:14px 14px 4px;border-radius:20px;padding:7px 12px;
+    font-size:11px;font-weight:600;display:flex;align-items:center;gap:7px;
+    border:1px solid;transition:all .3s;
+  }
+  .gpu-pill.on {background:rgba(46,204,155,.1);color:var(--green);border-color:rgba(46,204,155,.25)}
+  .gpu-pill.off{background:rgba(240,109,109,.1);color:var(--red);border-color:rgba(240,109,109,.2)}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .gpu-pill.on  .dot{background:var(--green);animation:blink 2s ease-in-out infinite}
+  .gpu-pill.off .dot{background:var(--red)}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .nav-label{padding:16px 16px 6px;font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:600}
+  .nav-item{
+    padding:9px 18px;display:flex;align-items:center;gap:9px;cursor:pointer;
+    font-size:13px;color:var(--text2);border-left:2px solid transparent;transition:all .15s;
+  }
+  .nav-item:hover{background:rgba(91,124,250,.07);color:var(--text)}
+  .nav-item.active{color:var(--blue);background:rgba(91,124,250,.1);border-left-color:var(--blue);font-weight:500}
+  .nav-item .ni{font-size:14px;width:18px;text-align:center}
+  aside .bottom{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
+  .db-path{font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;word-break:break-all}
+
+  /* ──────────────────── main ──────────────────── */
+  main{flex:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  .topbar{
+    padding:0 28px;height:56px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+    background:rgba(8,11,18,.7);backdrop-filter:blur(12px);
+  }
+  .topbar-left h2{font-size:16px;font-weight:600;letter-spacing:-.2px}
+  .topbar-left p{font-size:11.5px;color:var(--text2);margin-top:1px}
+
+  .content{flex:1;overflow-y:auto;padding:26px 28px;display:flex;flex-direction:column;gap:22px}
+  .content::-webkit-scrollbar{width:5px}
+  .content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+  /* pages */
+  .page{display:none;flex-direction:column;gap:22px}
+  .page.active{display:flex}
+
+  /* ──────────────────── cards ──────────────────── */
+  .card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px}
+  .card-row{display:grid;gap:18px}
+  .card-row.c2{grid-template-columns:1fr 1fr}
+  .card-row.c3{grid-template-columns:300px 1fr}
+  .card-hd{
+    font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.9px;
+    color:var(--text2);margin-bottom:16px;display:flex;align-items:center;gap:7px
+  }
+
+  /* stats */
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .stat{
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+    padding:18px 18px 14px;position:relative;overflow:hidden
+  }
+  .stat::after{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:var(--accent,var(--blue))
+  }
+  .stat-lbl{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+  .stat-val{font-size:28px;font-weight:700;letter-spacing:-1.5px;line-height:1}
+  .stat-sub{font-size:11px;color:var(--text3);margin-top:5px}
+
+  /* ──────────────────── Live comparison ──────────────────── */
+  .cmp-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:center}
+  .cmp-side{
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+    padding:18px 20px;text-align:center
+  }
+  .cmp-side.gpu{border-color:rgba(91,124,250,.3)}
+  .cmp-side.sql{border-color:rgba(240,109,109,.25)}
+  .cmp-engine{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:8px}
+  .cmp-val{
+    font-family:'JetBrains Mono',monospace;font-size:32px;font-weight:700;letter-spacing:-2px;
+    display:flex;align-items:baseline;justify-content:center;gap:4px
+  }
+  .cmp-unit{font-size:13px;color:var(--text2);font-weight:400;letter-spacing:0}
+  .cmp-mid{text-align:center}
+  .speedup-num{font-size:24px;font-weight:800;color:var(--green);letter-spacing:-1px}
+  .speedup-lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-top:3px}
+
+  /* ──────────────────── Charts ──────────────────── */
+  .chart-box{position:relative;height:280px}
+  .chart-box.tall{height:360px}
+
+  /* ──────────────────── Query explorer ──────────────────── */
+  .q-list{display:flex;flex-direction:column;gap:6px}
+  .q-btn{
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);
+    padding:11px 13px;cursor:pointer;transition:all .15s;text-align:left
+  }
+  .q-btn:hover{border-color:var(--border2);background:rgba(91,124,250,.06)}
+  .q-btn.active{border-color:var(--blue);background:rgba(91,124,250,.12);box-shadow:var(--glow)}
+  .q-name{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:500;color:var(--blue)}
+  .q-desc{font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5}
+
+  .sql-viewer{
+    background:#060a14;border:1px solid var(--border);border-radius:var(--rs);
+    padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;
+    line-height:1.75;color:#c8d4f0;white-space:pre-wrap;overflow-x:auto;
+    max-height:200px;overflow-y:auto
+  }
+  .sql-viewer .kw{color:#c792ea;font-weight:500}
+  .sql-viewer .fn{color:#82aaff}
+  .sql-viewer .str{color:#c3e88d}
+  .sql-viewer .param{color:#ffcb6b}
+
+  .run-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:2px}
+  .run-bar label{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px}
+  .run-bar input{
+    width:68px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;
+    padding:5px 9px;color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace
+  }
+  .run-bar input:focus{outline:none;border-color:var(--blue)}
+
+  .btn{
+    padding:7px 18px;border-radius:var(--rs);border:none;font-size:13px;font-weight:600;
+    cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:6px;
+    font-family:'Inter',sans-serif
+  }
+  .btn-primary{background:var(--blue);color:#fff;box-shadow:0 2px 12px rgba(91,124,250,.3)}
+  .btn-primary:hover{background:#6b8cfb;transform:translateY(-1px)}
+  .btn-primary:active{transform:none}
+  .btn-ghost{background:var(--bg3);color:var(--text);border:1px solid var(--border)}
+  .btn-ghost:hover{border-color:var(--border2)}
+
+  /* result meta */
+  .result-meta{display:flex;align-items:center;gap:10px;padding:10px 0 2px;flex-wrap:wrap}
+  .badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+  .badge-g{background:rgba(46,204,155,.13);color:var(--green)}
+  .badge-b{background:rgba(91,124,250,.13);color:var(--blue)}
+  .badge-a{background:rgba(246,195,79,.13);color:var(--amber)}
+
+  /* ──────────────────── Data table ──────────────────── */
+  .tbl-wrap{overflow:auto;max-height:400px;border-radius:var(--rs);border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  thead{position:sticky;top:0;z-index:2}
+  thead th{
+    background:#080f1a;color:var(--text2);font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.6px;padding:9px 13px;text-align:left;border-bottom:1px solid var(--border);
+    white-space:nowrap;font-weight:600
+  }
+  tbody tr{border-bottom:1px solid rgba(80,110,220,.05);transition:background .1s}
+  tbody tr:hover{background:rgba(91,124,250,.05)}
+  tbody td{
+    padding:8px 13px;font-family:'JetBrains Mono',monospace;font-size:11.5px;
+    white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis
+  }
+  .null-val{color:var(--text3);font-style:italic}
+
+  /* ──────────────────── Table viewer tabs ──────────────────── */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tab{
+    padding:5px 14px;border-radius:20px;border:1px solid var(--border);
+    background:var(--bg2);color:var(--text2);font-size:12px;cursor:pointer;
+    transition:all .14s;font-family:'JetBrains Mono',monospace
+  }
+  .tab:hover{border-color:var(--border2);color:var(--text)}
+  .tab.active{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:600}
+
+  /* ──────────────────── Benchmark findings ──────────────────── */
+  .findings{display:flex;flex-direction:column;gap:10px}
+  .finding{
+    background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);
+    padding:11px 14px
+  }
+  .finding-lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px}
+  .finding-val{font-size:14px;font-weight:600}
+
+  /* ──────────────────── spinner / empty ──────────────────── */
+  .spin{
+    display:inline-block;width:14px;height:14px;border:2px solid var(--border2);
+    border-top-color:var(--blue);border-radius:50%;animation:spin .6s linear infinite
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty{color:var(--text2);text-align:center;padding:36px;font-size:13px}
+
+  /* scrollbar */
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+<aside>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-text">
+      <h1>BoltDB</h1>
+      <p>GPU · DBMS · Analytics</p>
+    </div>
+  </div>
+
+  <div id="gpuPill" class="gpu-pill off">
+    <div class="dot"></div>
+    <span id="gpuText">Checking…</span>
+  </div>
+
+  <div class="nav-label">Navigation</div>
+  <div class="nav-item active" onclick="goPage('overview',this)"><span class="ni">📊</span>Overview</div>
+  <div class="nav-item" onclick="goPage('queries',this)"><span class="ni">🔍</span>Query Explorer</div>
+  <div class="nav-item" onclick="goPage('tables',this)"><span class="ni">🗄️</span>Table Viewer</div>
+  <div class="nav-item" onclick="goPage('benchmark',this)"><span class="ni">⚡</span>GPU Benchmark</div>
+
+  <div class="bottom">
+    <div class="db-path" id="dbPath">Loading…</div>
+  </div>
+</aside>
+
+<!-- ── Main ──────────────────────────────────────────────────────────── -->
+<main>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h2 id="pageTitle">Overview</h2>
+      <p id="pageSub">Social media analytics — Apple Metal GPU</p>
+    </div>
+    <div id="topbarRight"></div>
+  </div>
+
+  <div class="content" id="content">
+
+    <!-- ══ Overview ══════════════════════════════════════════════════ -->
+    <div class="page active" id="page-overview">
+
+      <div class="stats-grid">
+        <div class="stat" style="--accent:var(--blue)">
+          <div class="stat-lbl">Total Users</div>
+          <div class="stat-val" id="s-users">—</div>
+          <div class="stat-sub">registered accounts</div>
+        </div>
+        <div class="stat" style="--accent:var(--purple)">
+          <div class="stat-lbl">Total Posts</div>
+          <div class="stat-val" id="s-posts">—</div>
+          <div class="stat-sub">published content</div>
+        </div>
+        <div class="stat" style="--accent:var(--green)">
+          <div class="stat-lbl">Total Likes</div>
+          <div class="stat-val" id="s-likes">—</div>
+          <div class="stat-sub">engagement events</div>
+        </div>
+        <div class="stat" style="--accent:var(--amber)">
+          <div class="stat-lbl">Comments</div>
+          <div class="stat-val" id="s-comments">—</div>
+          <div class="stat-sub">user interactions</div>
+        </div>
+      </div>
+
+      <!-- Live comparison -->
+      <div class="card">
+        <div class="card-hd">⚡ Live GPU vs SQL — 500K synthetic rows · 3-iteration average <span id="cmpSpin" class="spin" style="margin-left:6px"></span></div>
+        <div class="cmp-grid">
+          <div class="cmp-side sql">
+            <div class="cmp-engine">SQLite GROUP BY · CPU</div>
+            <div class="cmp-val" id="cmpSql">—<span class="cmp-unit">ms</span></div>
+          </div>
+          <div class="cmp-mid">
+            <div class="speedup-num" id="cmpSpeedup">—</div>
+            <div class="speedup-lbl">GPU Speedup</div>
+          </div>
+          <div class="cmp-side gpu">
+            <div class="cmp-engine">Apple Metal GPU · MLX</div>
+            <div class="cmp-val" id="cmpGpu">—<span class="cmp-unit">ms</span></div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <button class="btn btn-ghost" id="btnRefresh">🔄 Refresh Live Test</button>
+        </div>
+      </div>
+
+      <div class="card-row c2">
+        <div class="card">
+          <div class="card-hd">🏆 Top Influencers</div>
+          <div class="chart-box"><canvas id="chartInfluencers"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-hd">📈 Trending Topics</div>
+          <div class="chart-box"><canvas id="chartTopics"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- /overview -->
+
+    <!-- ══ Query Explorer ═════════════════════════════════════════════ -->
+    <div class="page" id="page-queries">
+      <div class="card-row c3">
+
+        <!-- Left: query list -->
+        <div>
+          <div class="card-hd" style="margin-bottom:10px">📋 Queries</div>
+          <div class="q-list" id="qList"><div class="empty">Loading…</div></div>
+        </div>
+
+        <!-- Right: query panel -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-hd" id="qName">Select a query →</div>
+            <div id="qDesc" style="font-size:13px;color:var(--text2);margin-bottom:12px">Click any query on the left.</div>
+            <div class="sql-viewer" id="qSql"></div>
+          </div>
+
+          <div class="card" id="runCard" style="display:none">
+            <div class="card-hd">▶ Execute</div>
+            <div class="run-bar">
+              <label>Limit <input type="number" id="rLimit" value="20" min="1" max="200"/></label>
+              <label>Days  <input type="number" id="rDays"  value="30" min="1" max="365"/></label>
+              <button class="btn btn-primary" id="btnRun">▶ Run</button>
+            </div>
+          </div>
+
+          <div id="qMeta" style="display:none">
+            <div class="result-meta" id="qMetaInner"></div>
+          </div>
+          <div id="qResultWrap" style="display:none">
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr id="qHead"></tr></thead>
+                <tbody id="qBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /queries -->
+
+    <!-- ══ Table Viewer ═══════════════════════════════════════════════ -->
+    <div class="page" id="page-tables">
+      <div class="card">
+        <div class="card-hd">🗄️ Database Tables</div>
+        <div class="tabs" id="tableTabs"></div>
+        <div id="tableMeta" style="font-size:11.5px;color:var(--text2);margin-bottom:10px"></div>
+        <div id="tableContent"><div class="empty">Loading…</div></div>
+      </div>
+    </div><!-- /tables -->
+
+    <!-- ══ GPU Benchmark ══════════════════════════════════════════════ -->
+    <div class="page" id="page-benchmark">
+
+      <div class="card">
+        <div class="card-hd">📊 Scale Benchmark — SQLite vs Apple Metal GPU (likes-per-user aggregation)</div>
+        <div class="chart-box tall"><canvas id="chartScale"></canvas></div>
+      </div>
+
+      <div class="card-row c2">
+        <div class="card">
+          <div class="card-hd">⚡ GPU Speedup vs SQLite</div>
+          <div class="chart-box"><canvas id="chartSpeedup"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-hd">📌 Key Findings</div>
+          <div class="findings" id="findings"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">📋 Raw Results</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rows</th><th>SQLite (ms)</th><th>NumPy (ms)</th>
+                <th>Metal GPU (ms)</th><th>Speedup</th><th>Winner</th>
+              </tr>
+            </thead>
+            <tbody id="benchBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /benchmark -->
+
+  </div><!-- /content -->
+</main>
+
+<script>
+'use strict';
+
+/* ── Chart defaults ────────────────────────────── */
+Chart.defaults.color = '#7a8aaa';
+Chart.defaults.borderColor = 'rgba(80,110,220,.1)';
+Chart.defaults.font.family = "'Inter', system-ui";
+
+/* ── State ─────────────────────────────────────── */
+const charts = {};
+let tableData = {};
+let activeQuery = null;
+
+/* ── Navigation ────────────────────────────────── */
+const PAGE_META = {
+  overview:  {title:'Overview',       sub:'Social media analytics — Apple Metal GPU'},
+  queries:   {title:'Query Explorer', sub:'Browse SQL, set params, execute & inspect results'},
+  tables:    {title:'Table Viewer',   sub:'Raw database tables — first 50 rows each'},
+  benchmark: {title:'GPU Benchmark',  sub:'Apple Metal GPU vs SQLite at scale'},
+};
+function goPage(id, el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('pageTitle').textContent = PAGE_META[id].title;
+  document.getElementById('pageSub').textContent   = PAGE_META[id].sub;
+}
+
+/* ── API helper ─────────────────────────────────── */
+async function api(path, opts={}) {
+  try {
+    const r = await fetch(path, opts);
+    if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||r.status); }
+    return r.json();
+  } catch(e) { console.error(path, e); throw e; }
+}
+
+/* ── Utilities ──────────────────────────────────── */
+function k(n){ return n>=1000 ? (n/1000).toFixed(n>=100000?0:1)+'K' : String(n) }
+function cell(v){ return v===null||v===undefined ? '<span class="null-val">NULL</span>' : String(v) }
+
+function mkTable(columns, rows) {
+  const th = columns.map(c=>`<th>${c}</th>`).join('');
+  const tb = rows.map(r=>`<tr>${r.map(v=>`<td title="${v===null?'NULL':v}">${cell(v)}</td>`).join('')}</tr>`).join('');
+  return `<div class="tbl-wrap"><table><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table></div>`;
+}
+
+function highlightSQL(sql) {
+  const KW = ['WITH RECURSIVE','WITH','SELECT','FROM','WHERE','LEFT JOIN','INNER JOIN','JOIN','ON',
+    'AS','ORDER BY','GROUP BY','HAVING','LIMIT','UNION ALL','UNION','DISTINCT','CASE','WHEN',
+    'THEN','ELSE','END','AND','OR','NOT','IN','IS NOT','IS','NULL','BETWEEN','OVER',
+    'PARTITION BY','DENSE_RANK','RANK','ROW_NUMBER','ROWS BETWEEN','PRECEDING','CURRENT ROW',
+    'COUNT','SUM','AVG','MAX','MIN','ROUND','NULLIF','COALESCE','CAST','STRFTIME',
+    'PRINTF','datetime','RECURSIVE','INSERT','CREATE','TABLE'];
+  let s = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  KW.forEach(k => {
+    s = s.replace(new RegExp(`\\b${k.replace(/ /g,'\\s+')}\\b`,'gi'),
+      m=>`<span class="kw">${m}</span>`);
+  });
+  s = s.replace(/'[^']*'/g, m=>`<span class="str">${m}</span>`);
+  s = s.replace(/:(\w+)/g, `<span class="param">:$1</span>`);
+  return s;
+}
+
+/* ── Status / GPU badge ─────────────────────────── */
+async function loadStatus() {
+  const s = await api('/api/status');
+  const pill = document.getElementById('gpuPill');
+  const txt  = document.getElementById('gpuText');
+  pill.className = 'gpu-pill ' + (s.gpu_available ? 'on' : 'off');
+  txt.textContent = s.gpu_available ? 'Metal GPU Active' : 'GPU Unavailable';
+  const dp = document.getElementById('dbPath');
+  dp.textContent = s.db.split('/').slice(-2).join('/');
+}
+
+/* ── Live comparison ─────────────────────────────── */
+async function loadLive() {
+  const btn  = document.getElementById('btnRefresh');
+  const spin = document.getElementById('cmpSpin');
+  if (btn.disabled) return;   // prevent double-click / re-entrant calls
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+
+  try {
+    const d = await api('/api/live_comparison');
+    spin.style.display = 'none';
+    btn.disabled = false;
+
+    document.getElementById('cmpSql').innerHTML =
+      `${d.sql_ms}<span class="cmp-unit">ms</span>`;
+    if (d.gpu_available && d.gpu_ms != null) {
+      document.getElementById('cmpGpu').innerHTML =
+        `${d.gpu_ms}<span class="cmp-unit">ms</span>`;
+      document.getElementById('cmpSpeedup').textContent = d.speedup + '×';
+    } else {
+      document.getElementById('cmpGpu').innerHTML =
+        `<span style="font-size:13px;color:var(--text2)">Not available</span>`;
+      document.getElementById('cmpSpeedup').textContent = '—';
+    }
+  } catch {
+    spin.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+
+/* ── Overview ────────────────────────────────────── */
+async function loadOverview() {
+  const tables = await api('/api/tables');
+  tableData = tables;
+
+  // stat cards
+  document.getElementById('s-users').textContent    = k(tables.users?.total_rows    || 0);
+  document.getElementById('s-posts').textContent    = k(tables.posts?.total_rows    || 0);
+  document.getElementById('s-likes').textContent    = k(tables.likes?.total_rows    || 0);
+  document.getElementById('s-comments').textContent = k(tables.comments?.total_rows || 0);
+
+  // table viewer tabs
+  const tabs = document.getElementById('tableTabs');
+  tabs.innerHTML = '';
+  Object.keys(tables).forEach((name, i) => {
+    const t = document.createElement('button');
+    t.className = 'tab' + (i===0?' active':'');
+    t.textContent = name;
+    t.addEventListener('click', () => { showTable(name, t); });
+    tabs.appendChild(t);
+    if (i===0) showTable(name, t);
+  });
+
+  // charts
+  const [inf, top] = await Promise.all([
+    api('/api/run_query',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:'top_influencers',limit:10})}),
+    api('/api/run_query',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:'trending_topics',limit:8,days:60})}),
+  ]);
+  renderInfluencerChart(inf);
+  renderTopicsChart(top);
+}
+
+function renderInfluencerChart(d) {
+  if (!d.rows?.length) return;
+  const ctx = document.getElementById('chartInfluencers').getContext('2d');
+  if (charts.inf) charts.inf.destroy();
+  charts.inf = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: d.rows.map(r=>r[1]),
+      datasets:[{
+        label:'Influence Score',
+        data: d.rows.map(r=>parseFloat(r[6])||0),
+        backgroundColor:'rgba(91,124,250,.65)',
+        borderColor:'rgba(91,124,250,1)',
+        borderWidth:1, borderRadius:5,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10}},grid:{color:'rgba(80,110,220,.08)'}},
+        y:{ticks:{font:{size:10}},grid:{color:'rgba(80,110,220,.08)'}},
+      }
+    }
+  });
+}
+
+function renderTopicsChart(d) {
+  if (!d.rows?.length) return;
+  const pal = ['#5b7cfa','#9b6ef5','#2ecc9b','#f6c34f','#f06d6d','#38bdf8','#fb923c','#a3e635'];
+  const ctx = document.getElementById('chartTopics').getContext('2d');
+  if (charts.top) charts.top.destroy();
+  charts.top = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: d.rows.map(r=>r[0]),
+      datasets:[{
+        data: d.rows.map(r=>parseInt(r[4])||0),
+        backgroundColor:pal, borderColor:'#0e1221', borderWidth:3,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{font:{size:11},padding:12}}}
+    }
+  });
+}
+
+/* ── Query explorer ──────────────────────────────── */
+async function loadQueries() {
+  const queries = await api('/api/queries');
+  const list = document.getElementById('qList');
+  list.innerHTML = '';
+  queries.forEach(q => {
+    const el = document.createElement('div');
+    el.className = 'q-btn';
+    el.innerHTML = `<div class="q-name">${q.name}</div><div class="q-desc">${q.description}</div>`;
+    el.addEventListener('click', () => selectQuery(q, el));
+    list.appendChild(el);
+  });
+}
+
+function selectQuery(q, el) {
+  document.querySelectorAll('.q-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  activeQuery = q;
+  document.getElementById('qName').textContent = q.name;
+  document.getElementById('qDesc').textContent = q.description;
+  document.getElementById('qSql').innerHTML = highlightSQL(q.sql);
+  document.getElementById('runCard').style.display = '';
+  document.getElementById('qMeta').style.display = 'none';
+  document.getElementById('qResultWrap').style.display = 'none';
+}
+
+document.getElementById('btnRun').addEventListener('click', async () => {
+  if (!activeQuery) return;
+  const btn = document.getElementById('btnRun');
+  btn.innerHTML = '<span class="spin"></span> Running…';
+  btn.disabled = true;
+  try {
+    const res = await api('/api/run_query', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        query: activeQuery.name,
+        limit: parseInt(document.getElementById('rLimit').value)||20,
+        days:  parseInt(document.getElementById('rDays').value)||30,
+      })
+    });
+    // meta
+    const metaDiv = document.getElementById('qMeta');
+    metaDiv.style.display = '';
+    document.getElementById('qMetaInner').innerHTML =
+      `<span class="badge badge-g">${res.row_count} rows</span>
+       <span class="badge badge-b">${res.elapsed_ms} ms</span>
+       <span class="badge badge-a">SQLite · CPU</span>`;
+    // table
+    document.getElementById('qResultWrap').innerHTML = mkTable(res.columns, res.rows);
+    document.getElementById('qResultWrap').style.display = '';
+  } catch(e) {
+    alert('Query failed: ' + e.message);
+  } finally {
+    btn.innerHTML = '▶ Run';
+    btn.disabled = false;
+  }
+});
+
+/* ── Table viewer ────────────────────────────────── */
+function showTable(name, tabEl) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  tabEl.classList.add('active');
+  const t = tableData[name];
+  if (!t) return;
+  document.getElementById('tableMeta').textContent =
+    `Showing first 50 of ${t.total_rows.toLocaleString()} total rows · ${t.columns.length} columns`;
+  document.getElementById('tableContent').innerHTML = mkTable(t.columns, t.rows);
+}
+
+/* ── Benchmark ───────────────────────────────────── */
+async function loadBenchmark() {
+  const results = await api('/api/scale_results');
+  if (!results.length) {
+    document.getElementById('benchBody').innerHTML =
+      '<tr><td colspan="6" class="empty">No scale_results_highiter.json found. Run gpu_scale_benchmark.py.</td></tr>';
+    return;
+  }
+  const labels = results.map(r => (r.rows/1e6).toFixed(1)+'M');
+  const sqlMs  = results.map(r => r.sqlite_ms);
+  const gpuMs  = results.map(r => r.gpu_mlx_ms);
+  const npMs   = results.map(r => r.numpy_ms);
+  const spd    = results.map(r => r.gpu_speedup_vs_sqlite);
+
+  // Scale line chart
+  const ctx1 = document.getElementById('chartScale').getContext('2d');
+  if (charts.scale) charts.scale.destroy();
+  charts.scale = new Chart(ctx1,{
+    type:'line',
+    data:{labels, datasets:[
+      {label:'SQLite (CPU)',  data:sqlMs, borderColor:'#f06d6d', backgroundColor:'rgba(240,109,109,.08)', tension:.4, pointRadius:5, borderWidth:2.5},
+      {label:'Metal GPU',    data:gpuMs, borderColor:'#5b7cfa', backgroundColor:'rgba(91,124,250,.1)',   tension:.4, pointRadius:5, borderWidth:2.5},
+      {label:'NumPy (CPU)',  data:npMs,  borderColor:'#2ecc9b', backgroundColor:'rgba(46,204,155,.07)',  tension:.4, pointRadius:4, borderWidth:1.5, borderDash:[6,3]},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{font:{size:12}}}},
+      scales:{
+        x:{title:{display:true,text:'Dataset size (rows)',font:{size:12}},grid:{color:'rgba(80,110,220,.08)'}},
+        y:{title:{display:true,text:'Time (ms)',font:{size:12}},grid:{color:'rgba(80,110,220,.08)'}},
+      }
+    }
+  });
+
+  // Speedup bar chart
+  const ctx2 = document.getElementById('chartSpeedup').getContext('2d');
+  if (charts.spd) charts.spd.destroy();
+  charts.spd = new Chart(ctx2,{
+    type:'bar',
+    data:{labels, datasets:[{
+      label:'GPU Speedup (×)',
+      data:spd,
+      backgroundColor: spd.map(s=>s>1?'rgba(91,124,250,.7)':'rgba(240,109,109,.5)'),
+      borderColor:     spd.map(s=>s>1?'#5b7cfa':'#f06d6d'),
+      borderWidth:1, borderRadius:5,
+    }]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw.toFixed(2)+'×'}}},
+      scales:{
+        x:{grid:{color:'rgba(80,110,220,.08)'}},
+        y:{ticks:{callback:v=>v+'×'},grid:{color:'rgba(80,110,220,.08)'}},
+      }
+    }
+  });
+
+  // Raw table
+  document.getElementById('benchBody').innerHTML = results.map(r => {
+    const winner = r.winner.includes('GPU')
+      ? `<span class="badge badge-b">GPU ✓</span>`
+      : `<span class="badge badge-g">SQL ✓</span>`;
+    const sColor = r.gpu_speedup_vs_sqlite > 1 ? 'color:var(--blue)' : 'color:var(--red)';
+    return `<tr>
+      <td>${r.rows.toLocaleString()}</td>
+      <td style="color:var(--red)">${r.sqlite_ms}</td>
+      <td style="color:var(--green)">${r.numpy_ms}</td>
+      <td style="color:var(--blue)">${r.gpu_mlx_ms}</td>
+      <td style="${sColor};font-weight:600">${r.gpu_speedup_vs_sqlite}×</td>
+      <td>${winner}</td>
+    </tr>`;
+  }).join('');
+
+  // Findings
+  const maxSpd    = Math.max(...spd).toFixed(2);
+  const crossover = results.find(r=>r.winner.includes('GPU'));
+  document.getElementById('findings').innerHTML = [
+    {lbl:'Peak GPU Speedup',    val: maxSpd + '× faster than SQLite'},
+    {lbl:'Crossover Point',     val: crossover ? crossover.rows.toLocaleString()+' rows' : 'Not reached'},
+    {lbl:'GPU Backend',         val: 'Apple Metal via MLX (arm64)'},
+    {lbl:'Algorithm',           val: 'Sort + boundary-diff · O(N) memory'},
+    {lbl:'Architecture',        val: 'Apple Silicon unified memory'},
+  ].map(f=>`
+    <div class="finding">
+      <div class="finding-lbl">${f.lbl}</div>
+      <div class="finding-val">${f.val}</div>
+    </div>`
+  ).join('');
+}
+
+/* ── Refresh button (single listener, guarded against spam) ── */
+document.getElementById('btnRefresh').addEventListener('click', loadLive);
+
+/* ── Init ────────────────────────────────────────── */
+(async function init() {
+  await loadStatus();
+  await Promise.all([
+    loadOverview(),
+    loadQueries(),
+    loadBenchmark(),
+    loadLive(),
+  ]);
+})();
+</script>
+</body>
+</html>
