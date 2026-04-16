@@ -8,6 +8,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', fontFamily: 'JetBrains Mono' });
+  </script>
   <style>
   /* ──────────────────── tokens ──────────────────── */
   :root{
@@ -248,6 +252,7 @@
   <div class="nav-item" onclick="goPage('queries',this)"><span class="ni">🔍</span>Query Explorer</div>
   <div class="nav-item" onclick="goPage('tables',this)"><span class="ni">🗄️</span>Table Viewer</div>
   <div class="nav-item" onclick="goPage('benchmark',this)"><span class="ni">⚡</span>GPU Benchmark</div>
+  <div class="nav-item" onclick="goPage('erd',this)"><span class="ni">🗺️</span>ER Diagram</div>
 
   <div class="bottom">
     <div class="db-path" id="dbPath">Loading…</div>
@@ -416,6 +421,89 @@
 
     </div><!-- /benchmark -->
 
+    <!-- ══ ER Diagram ══════════════════════════════════════════════════ -->
+    <div class="page" id="page-erd">
+      <div class="card" style="flex:1; display:flex; flex-direction:column; min-height: 500px;">
+        <div class="card-hd">🗺️ Database Schema Diagram</div>
+        <div class="mermaid" style="flex:1; overflow:auto; display:flex; justify-content:center; align-items:center; background: var(--bg0); border-radius: 8px; padding: 20px;">
+erDiagram
+    users ||--o{ posts : creates
+    users ||--o{ likes : gives
+    users ||--o{ comments : writes
+    users ||--o{ user_activity : generates
+    users ||--o{ follows : follower
+    users ||--o{ follows : followee
+
+    posts ||--o{ likes : receives
+    posts ||--o{ comments : has
+    posts ||--o{ post_tags : tagged_with
+
+    tags ||--o{ post_tags : maps
+    comments ||--o{ comments : replies_to
+
+    users {
+        int user_id PK
+        string username
+        string email
+        string city
+        string bio
+        string joined_at
+        int is_verified
+    }
+    posts {
+        int post_id PK
+        int user_id FK
+        string content
+        string media_type
+        string topic
+        string source_device
+        string created_at
+        int like_count
+        int comment_count
+    }
+    tags {
+        int tag_id PK
+        string tag_name
+    }
+    post_tags {
+        int post_id PK
+        int tag_id FK
+    }
+    follows {
+        int follower_user_id PK
+        int followee_user_id FK
+        string source_device
+        string followed_at
+    }
+    likes {
+        int like_id PK
+        int user_id FK
+        int post_id FK
+        string source_device
+        string created_at
+    }
+    comments {
+        int comment_id PK
+        int post_id FK
+        int user_id FK
+        int parent_comment_id FK
+        string source_device
+        string comment_text
+        string created_at
+    }
+    user_activity {
+        int activity_id PK
+        int user_id FK
+        string activity_type
+        string entity_type
+        int entity_id
+        string device_type
+        string activity_time
+    }
+        </div>
+      </div>
+    </div><!-- /erd -->
+
   </div><!-- /content -->
 </main>
 
@@ -438,6 +526,7 @@ const PAGE_META = {
   queries:   {title:'Query Explorer', sub:'Browse SQL, set params, execute & inspect results'},
   tables:    {title:'Table Viewer',   sub:'Raw database tables — first 50 rows each'},
   benchmark: {title:'GPU Benchmark',  sub:'Apple Metal GPU vs SQLite at scale'},
+  erd:       {title:'ER Diagram',     sub:'Database Schema Visualization'},
 };
 function goPage(id, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
