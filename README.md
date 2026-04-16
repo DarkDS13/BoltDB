@@ -1,16 +1,16 @@
 <div align="center">
-  <h1>⚡ BoltDB</h1>
+  <h1>BoltDB</h1>
   <p><b>High-Performance GPU-Accelerated Analytics DBMS</b></p>
   <p><i>A prototype relational database mimicking scaling social media entities, featuring advanced SQL querying, Apple Metal GPU acceleration, and a stunning real-time analytics dashboard.</i></p>
   
   ---
 </div>
 
-## 🚀 Overview
+## Overview
 
 BoltDB is a robust relational DBMS prototype built to demonstrate state-of-the-art database management, data synthesis, and query acceleration. It features a completely generated social media schema with millions of potential relationships, tested against advanced analytical queries (Recursive CTEs, Windowing, Aggregations), and benchmarked using both standard CPU operations and vector-accelerated Apple Metal (MLX) processing.
 
-### 🌟 Key Features
+### Key Features
 - **Rigorous Schema Design:** Built on SQLite with strong PK/FK relationships and check constraints.
 - **Advanced Analytical SQL:** Complex recursive querying, multi-table joins, cohort analysis, and rolling window aggregations.
 - **Trigger-Driven Consistency:** Real-time business logic triggers for automated activity logging and denormalized counting.
@@ -19,7 +19,7 @@ BoltDB is a robust relational DBMS prototype built to demonstrate state-of-the-a
 
 <br>
 
-## 📁 Architecture & Structure
+## Architecture & Structure
 
 ```text
 ├── data/
@@ -41,7 +41,7 @@ BoltDB is a robust relational DBMS prototype built to demonstrate state-of-the-a
 
 <br>
 
-## 🏎️ Quick Start
+## Quick Start
 
 **1. Generate the Database**
 Build and seed the database with synthetic social interactions:
@@ -75,7 +75,8 @@ python3 src/query_runner.py --query all --limit 10
 
 <br>
 
-## 🔎 SQL Evaluation Highlights
+## SQL Evaluation Highlights
+
 The analytical workload demonstrates advanced DBMS foundations:
 - **Multi-table Joins:** Deep relations tracking (`posts` → `likes` → `comments` → `tags`).
 - **Window Functions:** Ranking influencers utilizing `DENSE_RANK` and partitioning rolling averages.
@@ -85,7 +86,8 @@ The analytical workload demonstrates advanced DBMS foundations:
 
 <br>
 
-## ⚡ GPU / Hardware Acceleration
+## GPU / Hardware Acceleration
+
 We push the limits of lightweight databases by vectorizing aggregations:
 - **Baseline:** Standard SQLite `GROUP BY` Operations (CPU)
 - **Vector CPU:** Memory-mapped `numpy` aggregations.
@@ -99,7 +101,8 @@ We push the limits of lightweight databases by vectorizing aggregations:
 
 <br>
 
-## 👥 Creators
+## Creators
+
 Built with passion by:
 - **Adithya Shyam**
 - **Dev Patel**
