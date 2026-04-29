@@ -36,6 +36,22 @@ app = Flask(__name__, static_folder=str(ROOT / "frontend"), static_url_path="")
 SCALE_RESULTS_PATH = ROOT / "data" / "scale_results_highiter.json"
 CATALOG = query_catalog()
 
+# ── Apply novelty views if not already present in the live DB ────────────────
+_NOVELTY_VIEWS_SQL = ROOT / "sql" / "novelty_views.sql"
+
+def _ensure_novelty_views() -> None:
+    """Create the three novelty views in the live database if they don't exist yet."""
+    if not _NOVELTY_VIEWS_SQL.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(DEFAULT_DB_PATH))
+        conn.executescript(_NOVELTY_VIEWS_SQL.read_text(encoding="utf-8"))
+        conn.close()
+    except Exception as e:
+        print(f"[warn] Could not apply novelty_views.sql: {e}")
+
+_ensure_novelty_views()
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def get_conn() -> sqlite3.Connection:
@@ -143,6 +159,7 @@ def run_query():
         import argparse
         args = argparse.Namespace(
             limit=limit, days=days,
+            uid=data.get("uid") or None,
             user_id=data.get("user_id") or choose_default_user(conn),
             post_id=data.get("post_id") or choose_default_post(conn),
         )
