@@ -316,6 +316,209 @@ def query_catalog() -> dict[str, QueryDef]:
             """,
             params_factory=lambda args, conn: {"limit": args.limit},
         ),
+
+        # ── NOVELTY 1: Echo Chamber Coefficient ──────────────────────────────
+        "echo_chamber_leaderboard": QueryDef(
+            name="echo_chamber_leaderboard",
+            description="Platform-wide bubble leaderboard — HHI score per user (0=diverse, 1=full bubble).",
+            sql="""
+                SELECT
+                    username,
+                    echo_chamber_index,
+                    diversity_score,
+                    topics_engaged,
+                    bubble_severity,
+                    dominant_topic,
+                    dominant_topic_pct
+                FROM v_echo_chamber
+                ORDER BY echo_chamber_index DESC
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {"limit": args.limit},
+        ),
+        "diversity_nudge_feed": QueryDef(
+            name="diversity_nudge_feed",
+            description="Posts from topics user :uid almost never engages with — the feed no platform provides.",
+            sql="""
+                WITH user_top2_topics AS (
+                    SELECT p.topic
+                    FROM likes l
+                    JOIN posts p ON p.post_id = l.post_id
+                    WHERE l.user_id = :uid
+                    GROUP BY p.topic
+                    ORDER BY COUNT(*) DESC
+                    LIMIT 2
+                ),
+                already_interacted AS (
+                    SELECT post_id FROM likes    WHERE user_id = :uid
+                    UNION
+                    SELECT post_id FROM comments WHERE user_id = :uid
+                )
+                SELECT
+                    p.post_id,
+                    u.username,
+                    p.topic,
+                    p.created_at,
+                    p.like_count,
+                    p.comment_count,
+                    (p.like_count + 2 * p.comment_count) AS engagement_score,
+                    COALESCE(vq.cqi, 0)            AS conversation_quality,
+                    'diversity_nudge'               AS feed_source
+                FROM posts p
+                JOIN users u ON u.user_id = p.user_id
+                LEFT JOIN v_conversation_quality vq ON vq.post_id = p.post_id
+                WHERE p.topic NOT IN (SELECT topic FROM user_top2_topics)
+                  AND p.post_id NOT IN (SELECT post_id FROM already_interacted)
+                  AND p.created_at >= datetime('now', '-30 days')
+                ORDER BY
+                    (p.like_count + 2 * p.comment_count) * 0.6 +
+                    COALESCE(vq.cqi, 0) * 0.4 DESC
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {
+                "uid":   getattr(args, "uid", None) or choose_default_user(conn),
+                "limit": args.limit,
+            },
+        ),
+        "user_topic_breakdown": QueryDef(
+            name="user_topic_breakdown",
+            description="Per-topic engagement share for a user — shows their bubble composition.",
+            sql="""
+                WITH user_topic_engagement AS (
+                    SELECT p.topic, COUNT(*) AS cnt
+                    FROM likes l JOIN posts p ON p.post_id = l.post_id
+                    WHERE l.user_id = :uid
+                    GROUP BY p.topic
+                    UNION ALL
+                    SELECT p.topic, COUNT(*) AS cnt
+                    FROM comments c JOIN posts p ON p.post_id = c.post_id
+                    WHERE c.user_id = :uid
+                    GROUP BY p.topic
+                ),
+                aggregated AS (
+                    SELECT topic, SUM(cnt) AS total
+                    FROM user_topic_engagement
+                    GROUP BY topic
+                ),
+                grand AS (SELECT SUM(total) AS g FROM aggregated)
+                SELECT
+                    a.topic,
+                    a.total                                   AS interactions,
+                    ROUND(100.0 * a.total / g.g, 1)          AS pct_of_total,
+                    ROUND(a.total * 1.0 / g.g, 4)            AS share
+                FROM aggregated a, grand g
+                ORDER BY a.total DESC;
+            """,
+            params_factory=lambda args, conn: {
+                "uid": getattr(args, "uid", None) or choose_default_user(conn),
+            },
+        ),
+
+        # ── NOVELTY 2: Conversation Quality Index ─────────────────────────────
+        "best_discussions_cqi": QueryDef(
+            name="best_discussions_cqi",
+            description="Posts ranked by conversation quality (depth × diversity × author-response), not raw likes.",
+            sql="""
+                SELECT
+                    post_id,
+                    username,
+                    topic,
+                    like_count,
+                    comment_count,
+                    unique_commenters,
+                    ROUND(reply_ratio * 100, 1)   AS reply_pct,
+                    ROUND(commenter_diversity, 2) AS commenter_diversity,
+                    author_replies,
+                    cqi,
+                    cqi_rank_global
+                FROM v_conversation_quality
+                WHERE comment_count >= 3
+                  AND created_at >= datetime('now', '-14 days')
+                ORDER BY cqi_rank_global
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {"limit": args.limit},
+        ),
+
+        # ── NOVELTY 3: Social Reciprocity Score ───────────────────────────────
+        "relationship_health": QueryDef(
+            name="relationship_health",
+            description="All interactions for user :uid ranked by imbalance — who you neglect and who neglects you.",
+            sql="""
+                SELECT
+                    CASE WHEN user_a_id = :uid THEN user_b    ELSE user_a    END AS other_user,
+                    CASE WHEN user_a_id = :uid THEN a_likes_b ELSE b_likes_a END AS i_gave,
+                    CASE WHEN user_a_id = :uid THEN b_likes_a ELSE a_likes_b END AS they_gave,
+                    total_interactions,
+                    imbalance_ratio,
+                    relationship_health,
+                    CASE
+                        WHEN user_a_id = :uid THEN  social_debt_of_a
+                        ELSE                        -social_debt_of_a
+                    END AS my_social_debt
+                FROM v_social_reciprocity
+                WHERE user_a_id = :uid
+                   OR user_b_id = :uid
+                ORDER BY imbalance_ratio DESC
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {
+                "uid":   getattr(args, "uid", None) or choose_default_user(conn),
+                "limit": args.limit,
+            },
+        ),
+        "social_debt_owe": QueryDef(
+            name="social_debt_owe",
+            description="Users whose engagement user :uid has not reciprocated — social debt owed by the user.",
+            sql="""
+                SELECT
+                    CASE WHEN user_a_id = :uid THEN user_b ELSE user_a END AS creditor,
+                    CASE WHEN user_a_id = :uid
+                         THEN  social_debt_of_a
+                         ELSE -social_debt_of_a
+                    END AS debt_amount,
+                    total_interactions,
+                    relationship_health
+                FROM v_social_reciprocity
+                WHERE (user_a_id = :uid OR user_b_id = :uid)
+                  AND (
+                    (user_a_id = :uid AND social_debt_of_a >  2) OR
+                    (user_b_id = :uid AND social_debt_of_a < -2)
+                  )
+                ORDER BY ABS(social_debt_of_a) DESC
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {
+                "uid":   getattr(args, "uid", None) or choose_default_user(conn),
+                "limit": args.limit,
+            },
+        ),
+        "social_debt_owe_me": QueryDef(
+            name="social_debt_owe_me",
+            description="Users who engage with :uid but receive nothing back — fans the user ignores.",
+            sql="""
+                SELECT
+                    CASE WHEN user_a_id = :uid THEN user_b ELSE user_a END AS fan,
+                    CASE WHEN user_a_id = :uid
+                         THEN -social_debt_of_a
+                         ELSE  social_debt_of_a
+                    END AS fan_debt_to_me,
+                    total_interactions,
+                    relationship_health
+                FROM v_social_reciprocity
+                WHERE (user_a_id = :uid OR user_b_id = :uid)
+                  AND (
+                    (user_a_id = :uid AND social_debt_of_a < -2) OR
+                    (user_b_id = :uid AND social_debt_of_a >  2)
+                  )
+                ORDER BY ABS(social_debt_of_a) DESC
+                LIMIT :limit;
+            """,
+            params_factory=lambda args, conn: {
+                "uid":   getattr(args, "uid", None) or choose_default_user(conn),
+                "limit": args.limit,
+            },
+        ),
     }
 
 

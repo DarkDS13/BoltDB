@@ -268,6 +268,7 @@
   <div class="nav-item" onclick="goPage('queries',this)"><span class="ni">🔍</span>Query Explorer</div>
   <div class="nav-item" onclick="goPage('tables',this)"><span class="ni">🗄️</span>Table Viewer</div>
   <div class="nav-item" onclick="goPage('benchmark',this)"><span class="ni">⚡</span>GPU Benchmark</div>
+  <div class="nav-item" onclick="goPage('novelty',this)"><span class="ni">🧬</span>Novelty Lab</div>
 
   <div class="bottom">
     <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Creators</div>
@@ -372,6 +373,7 @@
             <div class="run-bar">
               <label>Limit <input type="number" id="rLimit" value="20" min="1" max="200"/></label>
               <label>Days  <input type="number" id="rDays"  value="30" min="1" max="365"/></label>
+              <label id="uidLabel" style="display:none">User ID <input type="number" id="rUid" value="1" min="1"/></label>
               <button class="btn btn-primary" id="btnRun">▶ Run</button>
             </div>
           </div>
@@ -438,6 +440,77 @@
 
     </div><!-- /benchmark -->
 
+    <!-- ══ Novelty Lab ═══════════════════════════════════════════════ -->
+    <div class="page" id="page-novelty">
+
+      <!-- User lookup bar -->
+      <div class="card">
+        <div class="card-hd">🎯 User Lookup — per-user novelty analysis</div>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px">
+            User ID
+            <input type="number" id="noveltyUid" value="1" min="1"
+              style="width:80px;background:var(--bg1);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace;font-weight:700"/>
+          </label>
+          <button class="btn btn-primary" id="btnNoveltyAnalyze">▶ Analyze</button>
+          <span id="noveltyUserLabel" style="font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace"></span>
+        </div>
+      </div>
+
+      <!-- ECC row -->
+      <div class="card-row c2">
+        <div class="card">
+          <div class="card-hd">🫧 Echo Chamber Leaderboard</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+            HHI score 0 = full diversity · 1 = complete bubble. Platform's 10 most-bubbled users.
+          </div>
+          <div class="chart-box"><canvas id="chartBubble"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-hd">🌐 Diversity Nudge Feed</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+            Posts from topics user <span id="nudgeUidLabel" style="color:var(--blue);font-family:'JetBrains Mono',monospace">#1</span> almost never engages with — the feed no platform provides.
+          </div>
+          <div id="nudgeFeedWrap"><div class="empty">Select a user and click Analyze.</div></div>
+        </div>
+      </div>
+
+      <!-- Topic breakdown for selected user -->
+      <div class="card">
+        <div class="card-hd">📊 Topic Engagement Breakdown — user <span id="topicUidLabel" style="color:var(--blue);font-family:'JetBrains Mono',monospace">#1</span></div>
+        <div id="topicBreakdownWrap"><div class="empty">Select a user and click Analyze.</div></div>
+      </div>
+
+      <!-- CQI row -->
+      <div class="card">
+        <div class="card-hd">💬 Best Discussions — Conversation Quality Index (CQI)</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+          Ranked by depth × diversity × author-responsiveness, not raw like/comment counts.
+          A post with a 30-person threaded debate scores higher than 500 one-word comments.
+        </div>
+        <div id="cqiTableWrap"><div class="empty">Loading…</div></div>
+      </div>
+
+      <!-- SRS row -->
+      <div class="card-row c2">
+        <div class="card">
+          <div class="card-hd">⚖️ Relationship Health — user <span id="srsUidLabel" style="color:var(--blue);font-family:'JetBrains Mono',monospace">#1</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+            All interactions with others, ranked by imbalance. 0 = mutual · 1 = parasocial.
+          </div>
+          <div id="srsTableWrap"><div class="empty">Select a user and click Analyze.</div></div>
+        </div>
+        <div class="card">
+          <div class="card-hd">💸 Social Debt — user <span id="debtUidLabel" style="color:var(--blue);font-family:'JetBrains Mono',monospace">#1</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+            People whose engagement you haven't reciprocated. Positive = you owe them.
+          </div>
+          <div id="debtTableWrap"><div class="empty">Select a user and click Analyze.</div></div>
+        </div>
+      </div>
+
+    </div><!-- /novelty -->
+
   </div><!-- /content -->
 </main>
 
@@ -460,6 +533,7 @@ const PAGE_META = {
   queries:   {title:'Query Explorer', sub:'Browse SQL, set params, execute & inspect results'},
   tables:    {title:'Table Viewer',   sub:'Raw database tables — first 50 rows each'},
   benchmark: {title:'GPU Benchmark',  sub:'Apple Metal GPU vs SQLite at scale'},
+  novelty:   {title:'Novelty Lab',    sub:'Echo chambers · Conversation quality · Social reciprocity'},
 };
 function goPage(id, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -653,6 +727,9 @@ function selectQuery(q, el) {
   document.getElementById('runCard').style.display = '';
   document.getElementById('qMeta').style.display = 'none';
   document.getElementById('qResultWrap').style.display = 'none';
+  // Show UID input only for queries that use :uid parameter
+  const needsUid = q.sql && q.sql.includes(':uid');
+  document.getElementById('uidLabel').style.display = needsUid ? '' : 'none';
 }
 
 document.getElementById('btnRun').addEventListener('click', async () => {
@@ -661,14 +738,19 @@ document.getElementById('btnRun').addEventListener('click', async () => {
   btn.innerHTML = '<span class="spin"></span> Running…';
   btn.disabled = true;
   try {
+    const body = {
+      query: activeQuery.name,
+      limit: parseInt(document.getElementById('rLimit').value)||20,
+      days:  parseInt(document.getElementById('rDays').value)||30,
+    };
+    // Include uid only if the query needs it
+    if (activeQuery.sql && activeQuery.sql.includes(':uid')) {
+      body.uid = parseInt(document.getElementById('rUid').value)||1;
+    }
     const res = await api('/api/run_query', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        query: activeQuery.name,
-        limit: parseInt(document.getElementById('rLimit').value)||20,
-        days:  parseInt(document.getElementById('rDays').value)||30,
-      })
+      body:JSON.stringify(body)
     });
     // meta
     const metaDiv = document.getElementById('qMeta');
@@ -791,6 +873,120 @@ async function loadBenchmark() {
 /* ── Refresh button (single listener, guarded against spam) ── */
 document.getElementById('btnRefresh').addEventListener('click', loadLive);
 
+/* ── Novelty Lab ─────────────────────────────── */
+async function noveltyPost(queryName, extraParams={}) {
+  return api('/api/run_query', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({query:queryName, limit:20, ...extraParams})
+  });
+}
+
+async function loadNoveltyOverview() {
+  // CQI: best discussions platform-wide (no user needed)
+  try {
+    const cqi = await noveltyPost('best_discussions_cqi', {limit:15});
+    document.getElementById('cqiTableWrap').innerHTML =
+      cqi.rows?.length ? mkTable(cqi.columns, cqi.rows) : '<div class="empty">No data</div>';
+  } catch { document.getElementById('cqiTableWrap').innerHTML = '<div class="empty">Run novelty_views.sql first.</div>'; }
+
+  // ECC: echo chamber leaderboard chart
+  try {
+    const ecc = await noveltyPost('echo_chamber_leaderboard', {limit:10});
+    if (ecc.rows?.length) renderBubbleChart(ecc);
+  } catch { /* view not yet created */ }
+}
+
+async function loadNoveltyUser() {
+  const uid = parseInt(document.getElementById('noveltyUid').value)||1;
+  const btn = document.getElementById('btnNoveltyAnalyze');
+  btn.innerHTML = '<span class="spin"></span>';
+  btn.disabled = true;
+
+  // Update labels
+  ['nudgeUidLabel','topicUidLabel','srsUidLabel','debtUidLabel'].forEach(id=>{
+    document.getElementById(id).textContent = '#'+uid;
+  });
+
+  const setWrap = (id, html) => { document.getElementById(id).innerHTML = html; };
+  const errHtml = '<div class="empty">View not found — run novelty_views.sql first.</div>';
+
+  await Promise.allSettled([
+    // Diversity nudge feed
+    noveltyPost('diversity_nudge_feed', {uid, limit:10}).then(d=>{
+      setWrap('nudgeFeedWrap', d.rows?.length ? mkTable(d.columns, d.rows) : '<div class="empty">No out-of-bubble posts found.</div>');
+    }).catch(()=>setWrap('nudgeFeedWrap', errHtml)),
+
+    // Topic breakdown
+    noveltyPost('user_topic_breakdown', {uid}).then(d=>{
+      setWrap('topicBreakdownWrap', d.rows?.length ? mkTable(d.columns, d.rows) : '<div class="empty">No engagement data.</div>');
+    }).catch(()=>setWrap('topicBreakdownWrap', errHtml)),
+
+    // Relationship health
+    noveltyPost('relationship_health', {uid, limit:15}).then(d=>{
+      setWrap('srsTableWrap', d.rows?.length ? mkTable(d.columns, d.rows) : '<div class="empty">No interactions found.</div>');
+    }).catch(()=>setWrap('srsTableWrap', errHtml)),
+
+    // Social debt
+    noveltyPost('social_debt_owe', {uid, limit:10}).then(d=>{
+      setWrap('debtTableWrap', d.rows?.length ? mkTable(d.columns, d.rows) : '<div class="empty">No social debt — you\'re square.</div>');
+    }).catch(()=>setWrap('debtTableWrap', errHtml)),
+  ]);
+
+  btn.innerHTML = '▶ Analyze';
+  btn.disabled = false;
+}
+
+function renderBubbleChart(d) {
+  if (!d.rows?.length) return;
+  // columns: username, echo_chamber_index, diversity_score, bubble_severity
+  const usernameIdx   = d.columns.indexOf('username');
+  const eccIdx        = d.columns.indexOf('echo_chamber_index');
+  const diversityIdx  = d.columns.indexOf('diversity_score');
+  const usernames  = d.rows.map(r => r[usernameIdx]  ?? r[0]);
+  const eccScores  = d.rows.map(r => parseFloat(r[eccIdx]  ?? r[1]) || 0);
+  const divScores  = d.rows.map(r => parseFloat(r[diversityIdx] ?? r[2]) || 0);
+
+  const ctx = document.getElementById('chartBubble').getContext('2d');
+  if (charts.bubble) charts.bubble.destroy();
+  charts.bubble = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: usernames,
+      datasets: [
+        {
+          label: 'Echo Chamber Index (HHI)',
+          data: eccScores,
+          backgroundColor: eccScores.map(s => s > 0.5 ? 'rgba(239,68,68,0.8)' : s > 0.3 ? 'rgba(254,209,0,0.8)' : 'rgba(0,155,58,0.8)'),
+          borderWidth: 1, borderRadius: 2,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Diversity Score %',
+          data: divScores,
+          type: 'line',
+          borderColor: '#009b3a',
+          backgroundColor: 'rgba(0,155,58,0.1)',
+          tension: 0.3,
+          pointRadius: 4,
+          yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { font: {size:10} } } },
+      scales: {
+        x: { ticks: { font:{size:9} }, grid: { color:'rgba(254,209,0,0.05)' } },
+        y: { position:'left',  min:0, max:1, ticks:{font:{size:10}}, title:{display:true,text:'HHI',font:{size:10}}, grid:{color:'rgba(254,209,0,0.05)'} },
+        y2: { position:'right', min:0, max:100, ticks:{font:{size:10},callback:v=>v+'%'}, title:{display:true,text:'Diversity %',font:{size:10}}, grid:{display:false} },
+      }
+    }
+  });
+}
+
+document.getElementById('btnNoveltyAnalyze').addEventListener('click', loadNoveltyUser);
+
 /* ── Init ────────────────────────────────────────── */
 (async function init() {
   await loadStatus();
@@ -799,6 +995,7 @@ document.getElementById('btnRefresh').addEventListener('click', loadLive);
     loadQueries(),
     loadBenchmark(),
     loadLive(),
+    loadNoveltyOverview(),
   ]);
 })();
 </script>

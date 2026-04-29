@@ -47,3 +47,10 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+node_modules/
+
+# Project Reports
+GPU Accelerated DBMS*
+IT252_Project_Report*
+*.pdf
+docs/
