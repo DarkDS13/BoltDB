@@ -459,7 +459,7 @@ def query_catalog() -> dict[str, QueryDef]:
                 FROM v_social_reciprocity
                 WHERE user_a_id = :uid
                    OR user_b_id = :uid
-                ORDER BY imbalance_ratio DESC
+                ORDER BY total_interactions DESC, imbalance_ratio DESC
                 LIMIT :limit;
             """,
             params_factory=lambda args, conn: {
